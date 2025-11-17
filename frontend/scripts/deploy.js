@@ -1,19 +1,15 @@
-const { ethers } = require("hardhat");
-
 async function main() {
-  const Voting = await ethers.getContractFactory("Voting");
-  console.log("⏳ Deploying Voting contract...");
+  const candidates = ["Alice", "Bob", "Charlie"]; // <-- ADD YOUR NAMES HERE
 
-  // Pass your candidate names here
-  const voting = await Voting.deploy(["Alice", "Bob", "Charlie"]);
+  const Voting = await ethers.getContractFactory("Voting");
+  const voting = await Voting.deploy(candidates);
+
   await voting.waitForDeployment();
 
-  console.log("✅ Voting contract deployed at:", await voting.getAddress());
+  console.log("Voting contract deployed at:", await voting.getAddress());
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error("❌ Error during deployment:", error);
-    process.exit(1);
-  });
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

@@ -3,10 +3,10 @@ import { ethers } from "ethers";
 import contractABI from "./Voting.json";
 
 // ⭐ Replace with your deployed contract address
-const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const contractAddress = "0x0DAEE4ACC936f76617c58B02F345Ba25B9435CB4";
 
 // ⭐ Replace with your ADMIN address (Hardhat deployer)
-const adminAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+const adminAddress = "0x62b1b01eb9cb2bab72f1308fbf307e4ec5326aec";
 
 export default function App() {
   const [account, setAccount] = useState("");

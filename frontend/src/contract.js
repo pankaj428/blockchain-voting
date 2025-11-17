@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import contractABI from "./Voting.json";
 
-const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const contractAddress = "0x0DAEE4ACC936f76617c58B02F345Ba25B9435CB4";
 
 export const getEthereumContract = async () => {
   if (!window.ethereum) {
