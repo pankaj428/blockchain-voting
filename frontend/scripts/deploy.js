@@ -1,15 +1,17 @@
+const { ethers } = require("hardhat");
+
 async function main() {
-  const candidates = ["Alice", "Bob", "Charlie"]; // <-- ADD YOUR NAMES HERE
+  const candidates = ["Alice", "Bob"];
+
+  // ⭐ This must be your MinimalForwarder address deployed on Sepolia
+  const trustedForwarder = "0xYOUR_FORWARDER_ADDRESS";
 
   const Voting = await ethers.getContractFactory("Voting");
-  const voting = await Voting.deploy(candidates);
+  const voting = await Voting.deploy(trustedForwarder, candidates);
 
   await voting.waitForDeployment();
 
-  console.log("Voting contract deployed at:", await voting.getAddress());
+  console.log("Voting deployed at:", await voting.getAddress());
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main().catch(console.error);

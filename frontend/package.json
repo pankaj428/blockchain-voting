@@ -10,8 +10,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@biconomy/account": "^4.5.7",
+    "@biconomy/bundler": "^3.1.4",
+    "@biconomy/core-types": "^3.1.4",
+    "@biconomy/paymaster": "^3.1.4",
+    "@biconomy/sdk": "^0.0.29",
+    "@tailwindcss/cli": "^4.1.17",
+    "@tailwindcss/vite": "^4.1.17",
+    "canvas-confetti": "^1.9.4",
+    "chart.js": "^4.5.1",
     "ethers": "^6.15.0",
+    "framer-motion": "^12.23.24",
     "react": "^19.0.2",
+    "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.0.2"
   },
   "devDependencies": {
@@ -19,10 +30,13 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.1.0",
+    "autoprefixer": "^10.4.22",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^14.0.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.17",
     "vite": "^5.4.0"
   }
 }

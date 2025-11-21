@@ -1,17 +1,21 @@
 import { ethers } from "ethers";
-import contractABI from "./Voting.json";
+import votingArtifact from "./Voting.json";
 
-const contractAddress = "0x0DAEE4ACC936f76617c58B02F345Ba25B9435CB4";
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
 
-export const getEthereumContract = async () => {
-  if (!window.ethereum) {
-    alert("MetaMask not installed!");
-    return;
-  }
-
+export async function getProvider() {
+  if (!window.ethereum) throw new Error("MetaMask not found");
   const provider = new ethers.BrowserProvider(window.ethereum);
-  const signer = await provider.getSigner();   // ⭐ VERY IMPORTANT
-  const contract = new ethers.Contract(contractAddress, contractABI.abi, signer);
+  await provider.send("eth_requestAccounts", []);
+  return provider;
+}
 
-  return contract;
-};
+export async function getSigner() {
+  const provider = await getProvider();
+  return provider.getSigner();
+}
+
+export async function getContract() {
+  const signer = await getSigner();
+  return new ethers.Contract(CONTRACT_ADDRESS, votingArtifact.abi, signer);
+}
