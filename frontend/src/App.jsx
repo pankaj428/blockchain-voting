@@ -1,41 +1,27 @@
-// src/App.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { getContract, getSigner } from "./contract.js";
 
-/*
-  Premium UI App.jsx
-  - Uses your getContract/getSigner
-  - Lightweight SVG graph (no Chart.js)
-  - Lazy-loads canvas-confetti (avoid Vite import-time errors)
-  - Single AudioContext instance, throttled clicks (no continuous beep)
-  - Light (pure white) and Dark theme support
-*/
+import confetti from "canvas-confetti"; // NEW: Confetti
 
+import { Pie } from "react-chartjs-2";
+import {
+  Chart as ChartJS,
+  ArcElement,
+  Tooltip,
+  Legend,
+} from "chart.js";
+
+ChartJS.register(ArcElement, Tooltip, Legend);
+
+// ---------- Toast ----------
 function Toast({ message, onClose }) {
   if (!message) return null;
   return (
     <div
-      role="status"
       onClick={onClose}
-      className="fixed right-6 top-6 z-50 transform-gpu rounded-lg px-4 py-2 shadow-xl bg-red-600 text-white cursor-pointer select-none"
+      className="fixed right-5 top-5 z-50 rounded-xl bg-rose-500 px-4 py-2 text-sm text-white shadow-2xl cursor-pointer animate-[toast_0.4s_ease-out]"
     >
       {message}
-    </div>
-  );
-}
-
-function Crown({ className = "" }) {
-  return (
-    <div className={`inline-block ${className}`} aria-hidden>
-      <svg viewBox="0 0 64 64" width="28" height="28" className="inline-block">
-        <defs>
-          <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0" stopColor="#ffd54a" />
-            <stop offset="1" stopColor="#ffb300" />
-          </linearGradient>
-        </defs>
-        <path fill="url(#g)" d="M6 50 L10 18 L24 30 L32 12 L40 30 L54 18 L58 50 Z" />
-      </svg>
     </div>
   );
 }
@@ -48,66 +34,34 @@ export default function App() {
   const [addPending, setAddPending] = useState(false);
   const [toast, setToast] = useState(null);
   const [name, setName] = useState("");
-  const adminAddress = (import.meta.env.VITE_ADMIN_ADDRESS || "").toLowerCase();
-  const [isAdmin, setIsAdmin] = useState(false);
   const [theme, setTheme] = useState("dark");
 
-  // audio context (single global)
-  const audioCtxRef = useRef(null);
-  const lastSoundRef = useRef(0);
-
-  const ensureAudioCtx = () => {
-    if (!audioCtxRef.current) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      try {
-        audioCtxRef.current = new AudioContext();
-      } catch (e) {
-        audioCtxRef.current = null;
-      }
-    }
-    return audioCtxRef.current;
-  };
-
-  // play short click beep, throttled (min delta 60ms)
-  const playClick = (opts = { freq: 900, len: 0.06, vol: 0.03, type: "sine" }) => {
-    const now = Date.now();
-    if (now - lastSoundRef.current < 60) return;
-    lastSoundRef.current = now;
-
-    const ctx = ensureAudioCtx();
-    if (!ctx) return;
-    try {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = opts.type;
-      o.frequency.value = opts.freq;
-      g.gain.value = opts.vol;
-      o.connect(g);
-      g.connect(ctx.destination);
-      const start = ctx.currentTime;
-      o.start(start);
-      g.gain.exponentialRampToValueAtTime(0.0001, start + opts.len);
-      setTimeout(() => {
-        try {
-          o.stop();
-          // don't close ctx so future sounds are instant
-        } catch (e) {}
-      }, opts.len * 1000 + 30);
-    } catch (e) {
-      // ignore audio errors
-    }
-  };
+  const adminAddress = (import.meta.env.VITE_ADMIN_ADDRESS || "").toLowerCase();
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const showToast = (msg) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 2600);
   };
 
-  // Theme init
+  // NEW: Confetti
+  const launchConfetti = () => {
+    confetti({
+      particleCount: 120,
+      spread: 80,
+      origin: { y: 0.6 },
+      scalar: 1.2,
+    });
+  };
+
+  // ---------- THEME ----------
   useEffect(() => {
     const saved = localStorage.getItem("bv_theme");
-    const initial = saved || (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
-    setTheme(initial);
+    if (saved === "light" || saved === "dark") {
+      setTheme(saved);
+    } else {
+      setTheme("dark");
+    }
   }, []);
 
   useEffect(() => {
@@ -115,30 +69,32 @@ export default function App() {
     localStorage.setItem("bv_theme", theme);
   }, [theme]);
 
-  // Load candidates from contract
+  // ---------- LOAD CANDIDATES ----------
   const loadCandidates = async () => {
     try {
       const contract = await getContract();
-      const countBN = await contract.candidatesCount();
-      const count = Number(countBN);
+      const count = Number(await contract.candidatesCount());
       const list = [];
       for (let i = 1; i <= count; i++) {
         const c = await contract.candidates(i);
-        list.push({ id: Number(c.id), name: String(c.name), votes: Number(c.voteCount) });
+        list.push({
+          id: Number(c.id),
+          name: String(c.name),
+          votes: Number(c.voteCount),
+        });
       }
       setCandidates(list);
     } catch (err) {
-      console.error("loadCandidates:", err);
+      console.error(err);
       showToast("Failed to load candidates");
     }
   };
 
   useEffect(() => {
-    // attempt load candidates on mount
     loadCandidates().catch(() => {});
   }, []);
 
-  // Connect wallet
+  // ---------- CONNECT ----------
   const connect = async () => {
     try {
       setLoading(true);
@@ -147,17 +103,16 @@ export default function App() {
       setAccount(address);
       setIsAdmin(address.toLowerCase() === adminAddress);
       await loadCandidates();
-      playClick({ freq: 1100, len: 0.07, vol: 0.04 });
       showToast("Wallet connected");
     } catch (err) {
-      console.error("connect:", err);
+      console.error(err);
       showToast(err?.message || "Connect failed");
     } finally {
       setLoading(false);
     }
   };
 
-  // Add candidate (admin)
+  // ---------- ADD CANDIDATE ----------
   const addCandidate = async () => {
     if (!name.trim()) {
       showToast("Enter candidate name");
@@ -165,7 +120,6 @@ export default function App() {
     }
     try {
       setAddPending(true);
-      playClick({ freq: 700, len: 0.06, vol: 0.04 });
       const contract = await getContract();
       const tx = await contract.addCandidate(name);
       await tx.wait();
@@ -173,46 +127,33 @@ export default function App() {
       await loadCandidates();
       showToast("Candidate added");
     } catch (err) {
-      console.error("addCandidate:", err);
+      console.error(err);
       showToast("Failed to add candidate");
     } finally {
       setAddPending(false);
     }
   };
 
-  // lazy confetti
-  const triggerConfetti = async (x = 0.5, y = 0.3) => {
-    try {
-      const module = await import("canvas-confetti");
-      const confetti = module.default || module;
-      confetti({
-        particleCount: 90,
-        spread: 70,
-        origin: { x, y },
-      });
-    } catch (e) {
-      // not installed or failed -> ignore
-      // If not installed, user can run: npm i canvas-confetti
-    }
-  };
-
-  // Vote
+  // ---------- VOTE ----------
   const vote = async (id) => {
     try {
       setVotePending((p) => ({ ...p, [id]: true }));
-      playClick({ freq: 1200, len: 0.06, vol: 0.05 });
       const contract = await getContract();
       const tx = await contract.vote(id);
       await tx.wait();
-      // small confetti from center-right
-      triggerConfetti(0.8, 0.25);
       await loadCandidates();
+
       showToast("Vote successful");
+      launchConfetti(); // NEW
+      
     } catch (err) {
-      console.error("vote:", err);
+      console.error(err);
       const message = err?.info?.error?.message || err?.message || "";
-      if (message.includes("Already voted")) showToast("You already voted");
-      else showToast("Vote failed");
+      if (message.includes("Already voted")) {
+        showToast("You already voted");
+      } else {
+        showToast("Vote failed");
+      }
     } finally {
       setVotePending((p) => {
         const cp = { ...p };
@@ -222,215 +163,383 @@ export default function App() {
     }
   };
 
-  // helper short account
-  const shortAccount = (a) => (a ? a.slice(0, 6) + "..." + a.slice(-4) : "Not connected");
+  const shortAccount = (a) =>
+    a ? `${a.slice(0, 6)}...${a.slice(-4)}` : "Not connected";
 
-  // determine leader
-  const leader = React.useMemo(() => {
-    if (!candidates || candidates.length === 0) return null;
-    let top = candidates[0];
-    for (let c of candidates) {
-      if (c.votes > top.votes) top = c;
-    }
-    return top;
+  // ---------- LEADER ----------
+  const leader = useMemo(() => {
+    if (!candidates.length) return null;
+    return candidates.reduce((max, c) => (c.votes > max.votes ? c : max), candidates[0]);
   }, [candidates]);
 
-  // Graph data: compute max votes
-  const totalVotes = candidates.reduce((s, c) => s + c.votes, 0);
-  const maxVotes = candidates.reduce((m, c) => Math.max(m, c.votes), 1);
+  const totalVotes = candidates.reduce((s, c) => s + c.votes, 0) || 1;
 
-  // inline styles for crown + confetti animations
-  const crownAnimStyle = {
-    animation: "float 1.8s ease-in-out infinite",
+  // ---------- PIE DATA ----------
+  const pieData = useMemo(() => {
+    return {
+      labels: candidates.map((c) => c.name),
+      datasets: [
+        {
+          data: candidates.map((c) => c.votes || 0),
+          backgroundColor: [
+            "rgba(129, 140, 248, 0.95)",
+            "rgba(236, 72, 153, 0.95)",
+            "rgba(45, 212, 191, 0.95)",
+            "rgba(251, 191, 36, 0.95)",
+            "rgba(248, 113, 113, 0.95)",
+            "rgba(56, 189, 248, 0.95)",
+          ],
+          borderColor: [
+            "rgba(76, 81, 191, 1)",
+            "rgba(190, 24, 93, 1)",
+            "rgba(20, 148, 126, 1)",
+            "rgba(180, 83, 9, 1)",
+            "rgba(185, 28, 28, 1)",
+            "rgba(12, 74, 110, 1)",
+          ],
+          borderWidth: 4,
+          hoverOffset: 16,
+        },
+      ],
+    };
+  }, [candidates]);
+
+  const pieOptions = {
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const value = ctx.raw || 0;
+            const pct = ((value / totalVotes) * 100).toFixed(1);
+            return `${ctx.label}: ${value} (${pct}%)`;
+          },
+        },
+      },
+    },
   };
 
+  // ---------- MAIN UI ----------
   return (
-    <div className={`min-h-screen transition-colors ${theme === "dark" ? "bg-gradient-to-b from-gray-900 to-gray-800 text-gray-200" : "bg-white text-gray-900"}`}>
+    <div
+      className={
+        "min-h-screen transition-colors duration-500 " +
+        (theme === "dark"
+          ? "bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100"
+          : "bg-gradient-to-br from-[#F7DFFF] via-[#F4E7FF] to-[#FFE3F0] text-[#1B1B1F]") // NEW LIGHT MODE
+      }
+    >
       <style>{`
-        /* small keyframes + glass */
-        @keyframes float {
-          0% { transform: translateY(0) rotate(-3deg) }
-          50% { transform: translateY(-6px) rotate(3deg) }
-          100% { transform: translateY(0) rotate(-3deg) }
-        }
-        .glass {
-          background: ${theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.6)"};
-          backdrop-filter: blur(6px);
-        }
-        .card-border {
-          border: 1px solid ${theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.06)"};
-        }
-        .crown-glow {
-          filter: drop-shadow(0 6px 18px rgba(255,180,0,0.15));
-        }
-        .winner-badge {
-          animation: pop 0.9s cubic-bezier(.2,.9,.3,1);
-        }
-        @keyframes pop {
-          0% { transform: scale(.9); opacity: 0 }
-          60% { transform: scale(1.03); opacity: 1 }
-          100% { transform: scale(1); opacity: 1 }
+        @keyframes toast_0_4s_ease-out {
+          0% { opacity: 0; transform: translateY(-8px) scale(.96); }
+          60% { opacity: 1; transform: translateY(2px) scale(1.02); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
         }
       `}</style>
 
       <Toast message={toast} onClose={() => setToast(null)} />
 
-      <header className={`max-w-7xl mx-auto px-6 py-6 flex items-center justify-between`}>
+      {/* HEADER */}
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-6">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Blockchain Voting</h1>
-          <p className={`text-sm mt-1 ${theme === "dark" ? "text-gray-400" : "text-gray-600"}`}>Simple on-chain voting — gas paid by user</p>
+          <h1 className="text-3xl font-extrabold tracking-tight">
+            Blockchain Voting
+          </h1>
+          <p
+            className={
+              "mt-1 text-sm " +
+              (theme === "dark" ? "text-slate-400" : "text-slate-600")
+            }
+          >
+          • On-chain votes • One wallet, one vote
+          </p>
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Theme toggle */}
           <button
-            onClick={() => { setTheme((t) => (t === "dark" ? "light" : "dark")); playClick({ freq: 550, len: 0.04 }); }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg ${theme === "dark" ? "bg-gray-800 text-yellow-300" : "bg-gray-100 text-gray-700"} border border-transparent hover:opacity-95 transition`}
-            title="Toggle theme"
+            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+            className={
+              "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur " +
+              (theme === "dark"
+                ? "border-slate-700 bg-slate-900/70 text-amber-300"
+                : "border-violet-100 bg-white/60 text-violet-700")
+            }
           >
-            <span className="sr-only">Toggle theme</span>
-            {theme === "dark" ? "🌙 Dark" : "☀️ Light"}
+            {theme === "dark" ? "🌙 Dark" : "✨ Light"}
           </button>
 
-          <div className={`px-4 py-2 rounded-full ${theme === "dark" ? "bg-gradient-to-r from-purple-500 to-indigo-500 text-white" : "bg-indigo-50 text-indigo-700"}`}>
+          {/* Account badge */}
+          <div
+            className={
+              "rounded-full px-4 py-1.5 text-xs font-semibold shadow-lg backdrop-blur " +
+              (theme === "dark"
+                ? "bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-white"
+                : "bg-indigo-500/10 text-indigo-700 border border-indigo-200")
+            }
+          >
             {shortAccount(account)}
           </div>
 
+          {/* Connect button */}
           <button
             onClick={connect}
-            className={`px-3 py-2 rounded-lg ${theme === "dark" ? "bg-indigo-600 text-white" : "bg-indigo-600 text-white"} transition shadow`}
             disabled={loading}
+            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/40 transition hover:bg-indigo-500 active:scale-95"
           >
-            {loading ? "Connecting..." : account ? "Reconnect / Switch" : "Connect Wallet"}
+            {loading ? "Connecting..." : account ? "Reconnect" : "Connect Wallet"}
           </button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 pb-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-          {/* Admin */}
-          <div className="lg:col-span-1">
-            <div className="glass card-border rounded-2xl p-6 shadow-lg">
-              <h3 className="text-lg font-semibold mb-2">Admin — Add Candidate</h3>
-              <p className={`text-sm mb-4 ${theme === "dark" ? "text-gray-400" : "text-gray-600"}`}>Admin only. Connect admin wallet to enable.</p>
+      {/* MAIN CONTENT */}
+      <main className="mx-auto flex max-w-6xl flex-col gap-8 px-5 pb-10">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* LEFT: Stats + Pie */}
+          <section className="space-y-6 lg:col-span-1">
+            <div
+              className={
+                "rounded-3xl border p-5 shadow-xl backdrop-blur-xl " +
+                (theme === "dark"
+                  ? "border-white/10 bg-slate-900/60"
+                  : "border-white/70 bg-white/60")
+              }
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Overview
+                  </p>
+                  <h2 className="text-lg font-semibold">Live Stats</h2>
+                </div>
+                <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-500">
+                  {candidates.length} candidates
+                </span>
+              </div>
 
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Candidate name"
-                className={`w-full px-4 py-3 rounded-lg ${theme === "dark" ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3`}
-              />
-
-              <button
-                onClick={addCandidate}
-                disabled={!isAdmin || addPending}
-                className={`w-full py-3 rounded-lg font-medium text-white transition transform active:scale-95 shadow-lg ${isAdmin ? "bg-gradient-to-r from-purple-600 to-indigo-600" : "bg-gray-400 cursor-not-allowed"}`}
-              >
-                {addPending ? "Adding..." : "Add Candidate"}
-              </button>
-
-              <div className="mt-5 text-xs text-gray-400">
-                <div><strong>Admin:</strong></div>
-                <div className="break-words mt-1 text-sm">{adminAddress || <span className="text-gray-500">not set</span>}</div>
+              <div className="mt-4 flex gap-4">
+                <div className="flex-1">
+                  <p className="text-xs text-slate-400">Total Votes</p>
+                  <p className="text-2xl font-bold">
+                    {totalVotes === 1 && !candidates.some((c) => c.votes > 0)
+                      ? 0
+                      : totalVotes}
+                  </p>
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-slate-400">Leading</p>
+                  <p className="text-sm font-medium">
+                    {leader ? leader.name : "No votes yet"}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Candidates list + graph */}
-          <div className="lg:col-span-2">
-            <div className="rounded-2xl card-border p-6 shadow-lg glass">
-              <div className="flex items-start justify-between mb-4">
-                <h2 className="text-xl font-semibold">Candidates</h2>
-                <div className={`text-sm ${theme === "dark" ? "text-gray-400" : "text-gray-600"}`}>Total: <span className="font-medium">{candidates.length}</span></div>
+            {/* Pie Chart card */}
+            <div
+              className={
+                "rounded-3xl border p-5 shadow-[0_24px_70px_rgba(88,28,135,0.35)] backdrop-blur-2xl " +
+                (theme === "dark"
+                  ? "border-violet-500/30 bg-slate-950/70"
+                  : "border-violet-200/70 bg-white/80")
+              }
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Vote Distribution</h3>
+                <span className="text-[11px] uppercase tracking-wide text-slate-400">
+                  3D Pie View
+                </span>
+
               </div>
 
-              <div className="space-y-4 mb-6">
-                {candidates.length === 0 ? (
-                  <div className="text-gray-400 py-8 text-center">No candidates found</div>
-                ) : (
-                  candidates.map((c, idx) => (
-                    <div key={c.id} className="flex items-center justify-between rounded-xl p-4 border shadow-sm transform transition hover:scale-[1.01]" style={{ borderColor: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.06)", background: theme === "dark" ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.9)" }}>
-                      <div>
-                        <div className="text-sm text-gray-400">#{idx + 1} • <span className={`${theme === "dark" ? "text-white" : "text-gray-900"} font-medium`}>{c.name}</span></div>
-                        <div className="text-xs text-gray-500 mt-1">Votes: <span className="font-medium">{c.votes}</span></div>
-                      </div>
+              {candidates.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400">
+                  No candidates to visualize yet.
+                </div>
+              ) : (
+                <div className="relative mx-auto flex max-w-xs items-center justify-center">
+                  <div
+                    className="relative h-52 w-52"
+                    style={{
+                      transform:
+                        "perspective(800px) rotateX(18deg) translateY(10px)",
+                    }}
+                  >
+                    <Pie data={pieData} options={pieOptions} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
 
-                      <div className="flex items-center gap-3">
+          {/* RIGHT: Candidates + Admin */}
+          <section className="space-y-6 lg:col-span-2">
+            {/* Candidates card */}
+            <div
+              className={
+                "rounded-3xl border p-5 shadow-xl backdrop-blur-xl " +
+                (theme === "dark"
+                  ? "border-white/10 bg-slate-900/70"
+                  : "border-white/80 bg-white/70")
+              }
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Candidates</h2>
+                <span className="text-xs text-slate-400">
+                  Click “Vote” to cast your vote on-chain
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {candidates.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-slate-400">
+                    No candidates yet. Admin can add from the panel below.
+                  </div>
+                ) : (
+                  candidates.map((c, idx) => {
+                    const pct = totalVotes
+                      ? ((c.votes / totalVotes) * 100).toFixed(1)
+                      : 0;
+                    const isLeader = leader && leader.id === c.id;
+
+                    return (
+                      <div
+                        key={c.id}
+                        className={
+                          "flex items-center justify-between rounded-2xl border px-4 py-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md " +
+                          (theme === "dark"
+                            ? "border-white/6 bg-slate-900/70"
+                            : "border-slate-200/80 bg-white/90")
+                        }
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-400">
+                              #{idx + 1}
+                            </span>
+                            <span className="text-sm font-semibold">
+                              {c.name}
+                            </span>
+                            {isLeader && (
+                              <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-500">
+                                LEADING
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex items-center gap-3 text-xs text-slate-400">
+                            <span>Votes: {c.votes}</span>
+                            <span>•</span>
+                            <span>{pct}%</span>
+                          </div>
+                        </div>
+
                         <button
                           onClick={() => vote(c.id)}
                           disabled={votePending[c.id]}
-                          className={`px-4 py-2 rounded-lg font-medium text-white transition ${votePending[c.id] ? "bg-emerald-600/60 cursor-wait" : "bg-emerald-600 hover:bg-emerald-500"}`}
+                          className={
+                            "rounded-xl px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition active:scale-95 " +
+                            (votePending[c.id]
+                              ? "bg-emerald-600/60 cursor-wait"
+                              : "bg-emerald-500 hover:bg-emerald-400")
+                          }
                         >
                           {votePending[c.id] ? "Voting..." : "Vote"}
                         </button>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
+            </div>
 
-              {/* simple SVG horizontal bar graph */}
-              <div className="mt-6">
-                <h3 className="text-sm font-semibold mb-2">Results (graph)</h3>
-                <div className={`p-4 rounded-xl ${theme === "dark" ? "bg-black/20" : "bg-gray-50"} border`} style={{ borderColor: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.06)" }}>
-                  {candidates.length === 0 ? (
-                    <div className="text-sm text-gray-500 py-6 text-center">No data</div>
-                  ) : (
-                    <div className="space-y-3">
-                      {candidates.map((c) => {
-                        const pct = totalVotes > 0 ? Math.round((c.votes / totalVotes) * 100) : 0;
-                        const widthPct = totalVotes > 0 ? (c.votes / maxVotes) * 100 : 6;
-                        return (
-                          <div key={c.id} className="flex items-center gap-4">
-                            <div className="w-32 text-sm font-medium" style={{ color: theme === "dark" ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.85)" }}>
-                              {c.name}
-                            </div>
-                            <div className="flex-1">
-                              <div className="h-6 rounded-md overflow-hidden" style={{ background: theme === "dark" ? "rgba(255,255,255,0.03)" : "#f0f0f0" }}>
-                                <div className="h-6 rounded-md" style={{ width: `${widthPct}%`, background: "linear-gradient(90deg,#10b981,#06b6d4)" }} />
-                              </div>
-                            </div>
-                            <div className="w-14 text-right text-sm">{c.votes} • {pct}%</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+            {/* Admin panel */}
+            <div
+              className={
+                "rounded-3xl border p-5 shadow-xl backdrop-blur-xl " +
+                (theme === "dark"
+                  ? "border-fuchsia-500/30 bg-slate-950/70"
+                  : "border-fuchsia-200/80 bg-white/80")
+              }
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-semibold">
+                    Admin Panel — Add Candidate
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Only the configured admin wallet can add new candidates.
+                  </p>
                 </div>
+                <span className="rounded-full bg-fuchsia-500/10 px-3 py-1 text-[11px] font-semibold text-fuchsia-500">
+                  Admin:{" "}
+                  {adminAddress
+                    ? `${adminAddress.slice(0, 6)}...${adminAddress.slice(-4)}`
+                    : "not set"}
+                </span>
               </div>
 
-              <div className="mt-6 text-xs text-gray-500">Tip: Voting will prompt MetaMask to pay gas. Make sure wallet is unlocked.</div>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Candidate name"
+                  className={
+                    "flex-1 rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400 " +
+                    (theme === "dark"
+                      ? "border-slate-700 bg-slate-900/80"
+                      : "border-slate-200 bg-white/90")
+                  }
+                />
+
+                <button
+                  onClick={addCandidate}
+                  disabled={!isAdmin || addPending}
+                  className={
+                    "rounded-xl px-4 py-2 text-xs font-semibold text-white shadow transition active:scale-95 " +
+                    (isAdmin
+                      ? "bg-gradient-to-r from-fuchsia-500 to-indigo-500 hover:opacity-95"
+                      : "bg-slate-400 cursor-not-allowed")
+                  }
+                >
+                  {addPending ? "Adding..." : "Add Candidate"}
+                </button>
+              </div>
             </div>
-          </div>
+          </section>
         </div>
 
-        {/* Leader / Winner */}
+        {/* Leader summary */}
         {leader && (
-          <div className="mt-8 max-w-7xl mx-auto">
-            <div className="rounded-2xl p-5 shadow-lg glass card-border flex items-center gap-4">
-              <div className="text-2xl">🏆</div>
-              <div className="flex-1">
-                <div className="flex items-center gap-3">
-                  <div className="text-lg font-semibold">Current Leader</div>
-                  <div className="px-3 py-1 rounded-full winner-badge" style={{ background: theme === "dark" ? "#fff6e0" : "#fffbeb", color: "#78350f" }}>
-                    {leader.votes} votes
-                  </div>
-                </div>
-                <div className="mt-1 text-sm" style={{ color: theme === "dark" ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.7)" }}>
-                  <span className="font-medium">{leader.name}</span> is leading with <span className="font-medium">{leader.votes}</span> votes!
+          <section className="mt-2">
+            <div
+              className={
+                "mx-auto flex max-w-3xl items-center justify-between rounded-3xl border px-5 py-4 shadow-lg backdrop-blur-xl " +
+                (theme === "dark"
+                  ? "border-amber-400/40 bg-amber-400/5"
+                  : "border-amber-300 bg-amber-50/90")
+              }
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">👑</span>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-amber-500">
+                    Current Leader
+                  </p>
+                  <p className="text-sm font-semibold">
+                    {leader.name} is leading with {leader.votes} votes.
+                  </p>
                 </div>
               </div>
-
-              <div className="flex items-center gap-3">
-                <div style={crownAnimStyle} className="crown-glow">
-                  <Crown />
-                </div>
+              <div className="hidden text-xs text-amber-700 sm:block">
+                Live leader is calculated directly from on-chain vote counts.
               </div>
             </div>
-          </div>
+          </section>
         )}
 
-        <footer className="mt-8 text-center text-sm text-gray-500">
-          Built with ❤️ — connect to interact
+        <footer className="mt-6 text-center text-xs text-slate-400">
+          Built with ❤️ using Solidity, React, TailwindCSS & Ethereum testnet.
         </footer>
       </main>
     </div>
