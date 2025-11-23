@@ -539,7 +539,7 @@ export default function App() {
         )}
 
         <footer className="mt-6 text-center text-xs text-slate-400">
-          Built with ❤️ using Solidity, React, TailwindCSS & Ethereum testnet.
+          Built with ❤️. Dedicated to nation. JAI HIND.
         </footer>
       </main>
     </div>
